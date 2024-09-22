@@ -71,7 +71,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 
 	writeHandshakeResponse(buf, r.Header, aknowledgement)
 	log.Printf("Connection established")
-	conn.Close()
+	closeConnection(conn)
 }
 
 func validateHeaders(headers http.Header) bool {
@@ -165,4 +165,11 @@ func writeHandshakeHeaders(buf *bufio.ReadWriter, rHeaders http.Header) {
 func addHeader(buf *bufio.ReadWriter, header string, value string) {
 	hString := fmt.Sprintf("%s: %s\r\n", header, value)
 	buf.WriteString(hString)
+}
+
+func closeConnection(conn net.Conn) {
+	conn.Write([]byte("\r\nClosing connection\r\n"))
+	conn.Write([]byte{0xFF, 0x00})
+	conn.Close()
+	log.Printf("Connection closed")
 }
