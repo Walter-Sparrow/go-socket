@@ -9,3 +9,7 @@ tasks:
     cmds:
       - go run main.go
 
+  test:
+    cmds:
+      - go test -v --count=1 ./... 
+

@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type Socket struct {
@@ -23,7 +24,7 @@ func (s *Socket) Start() {
 		panic("Could not start socket: " + err.Error())
 	}
 
-	fmt.Println("Listening on port 6969")
+	log.Printf("Listening on :6969")
 	s.ln = ln
 
 	mux := http.NewServeMux()
@@ -48,12 +49,14 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	n, err := r.Body.Read(appendix)
 	if (err != nil && err != io.EOF) || n != 8 {
 		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("Could not read appendix, got %x", appendix)))
 		return
 	}
 
-	aknowledgement, err := getAknowledgement(key1, key2, appendix)
+	challenge, err := getChallenge(key1, key2, appendix)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Could not get challenge"))
 		return
 	}
 
@@ -69,9 +72,9 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeHandshakeResponse(buf, r.Header, aknowledgement)
-	log.Printf("Connection established")
-	closeConnection(conn)
+	writeHandshakeResponse(buf, r.Header, challenge)
+
+	go handleSocketMessage(conn)
 }
 
 func validateHeaders(headers http.Header) bool {
@@ -79,10 +82,10 @@ func validateHeaders(headers http.Header) bool {
 	connectionHeader := headers.Get("Connection")
 	key1 := headers.Get("Sec-WebSocket-Key1")
 	key2 := headers.Get("Sec-WebSocket-Key2")
-	return upgradeHeader == "WebSocket" && connectionHeader == "Upgrade" && key1 != "" && key2 != ""
+	return strings.ToLower(upgradeHeader) == "websocket" && strings.ToLower(connectionHeader) == "upgrade" && key1 != "" && key2 != ""
 }
 
-func getAknowledgement(key1 string, key2 string, appendix []byte) ([16]byte, error) {
+func getChallenge(key1 string, key2 string, challenge []byte) ([16]byte, error) {
 	number1, err := getNumberFromKey(key1)
 	if err != nil {
 		return [16]byte{}, err
@@ -108,7 +111,7 @@ func getAknowledgement(key1 string, key2 string, appendix []byte) ([16]byte, err
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, key1Result)
 	binary.Write(buf, binary.BigEndian, key2Result)
-	binary.Write(buf, binary.BigEndian, appendix)
+	binary.Write(buf, binary.BigEndian, challenge)
 
 	hash := md5.Sum(buf.Bytes())
 	return hash, nil
@@ -140,11 +143,11 @@ func countSpaces(s string) int32 {
 	return count
 }
 
-func writeHandshakeResponse(buf *bufio.ReadWriter, rHeaders http.Header, aknowledgement [16]byte) {
+func writeHandshakeResponse(buf *bufio.ReadWriter, rHeaders http.Header, challenge [16]byte) {
 	buf.WriteString("HTTP/1.1 101 Switching Protocols\r\n")
 	writeHandshakeHeaders(buf, rHeaders)
 	buf.WriteString("\r\n")
-	buf.Write(aknowledgement[:])
+	buf.Write(challenge[:])
 	buf.Flush()
 }
 
@@ -153,7 +156,9 @@ func writeHandshakeHeaders(buf *bufio.ReadWriter, rHeaders http.Header) {
 	addHeader(buf, "Connection", "Upgrade")
 
 	subprotocol := rHeaders.Get("Sec-WebSocket-Protocol")
-	addHeader(buf, "Sec-WebSocket-Protocol", subprotocol)
+	if subprotocol != "" {
+		addHeader(buf, "Sec-WebSocket-Protocol", subprotocol)
+	}
 
 	host := rHeaders.Get("Host")
 	addHeader(buf, "Sec-WebSocket-Location", host)
@@ -167,9 +172,24 @@ func addHeader(buf *bufio.ReadWriter, header string, value string) {
 	buf.WriteString(hString)
 }
 
+func handleSocketMessage(conn net.Conn) {
+	for {
+		buf := make([]byte, 1024)
+		_, err := conn.Read(buf)
+		if err != nil && err != io.EOF {
+			log.Printf("Error reading from socket: %s", err)
+			conn.Close()
+			return
+		}
+
+		if buf[0] == 0xFF && buf[1] == 0x00 {
+			closeConnection(conn)
+			return
+		}
+	}
+}
+
 func closeConnection(conn net.Conn) {
-	conn.Write([]byte("\r\nClosing connection\r\n"))
 	conn.Write([]byte{0xFF, 0x00})
 	conn.Close()
-	log.Printf("Connection closed")
 }
