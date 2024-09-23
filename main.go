@@ -1,9 +1,9 @@
 package main
 
-import "github.com/Walter-Sparrow/go-socket/socket"
+import v0 "github.com/Walter-Sparrow/go-socket/socket/v0"
 
 func main() {
-	var s socket.Socket
+	var s v0.Socket
 	s.Start()
 	defer s.Stop()
 }
