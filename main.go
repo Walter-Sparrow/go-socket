@@ -22,7 +22,9 @@ func main() {
 
 		message := []byte("hello")
 		log.Printf("client: sending message: %s", message)
-		client.Send(message)
+		if err := client.Send(message); err != nil {
+			log.Println(err)
+		}
 	}()
 
 	mux := http.NewServeMux()
