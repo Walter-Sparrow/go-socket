@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type Socket struct {
@@ -45,15 +46,15 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	key1 := r.Header.Get("Sec-WebSocket-Key1")
 	key2 := r.Header.Get("Sec-WebSocket-Key2")
 
-	appendix := make([]byte, 8)
-	n, err := r.Body.Read(appendix)
+	challengeBuf := make([]byte, 8)
+	n, err := r.Body.Read(challengeBuf)
 	if (err != nil && err != io.EOF) || n != 8 {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Could not read appendix, got %x", appendix)))
+		w.Write([]byte(fmt.Sprintf("Could not read appendix, got %x", challengeBuf)))
 		return
 	}
 
-	challenge, err := getChallenge(key1, key2, appendix)
+	challenge, err := getChallenge(key1, key2, challengeBuf)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not get challenge"))
@@ -174,22 +175,89 @@ func addHeader(buf *bufio.ReadWriter, header string, value string) {
 
 func handleSocketMessage(conn net.Conn) {
 	for {
-		buf := make([]byte, 1024)
-		_, err := conn.Read(buf)
-		if err != nil && err != io.EOF {
-			log.Printf("Error reading from socket: %s", err)
-			conn.Close()
+		typeByte, ok := readByte(conn)
+		if !ok {
 			return
 		}
 
-		if buf[0] == 0xFF && buf[1] == 0x00 {
+		if typeByte>>7 == 0 {
+			if typeByte != 0x00 {
+				log.Printf("Invalid message type: %x", typeByte)
+				conn.Close()
+				return
+			}
+
+			_, ok := readMessage(conn)
+			if !ok {
+				return
+			}
+		} else {
+			if typeByte != 0xFF {
+				log.Printf("Invalid message type: %x", typeByte)
+				conn.Close()
+				return
+			}
+
+			b, ok := readByte(conn)
+			if !ok {
+				return
+			}
+
+			if b != 0x00 {
+				log.Printf("Invalid message type: %x", b)
+				conn.Close()
+				return
+			}
+
 			closeConnection(conn)
-			return
+			break
 		}
 	}
 }
 
+func sendMessage(conn net.Conn, message string) bool {
+	if !utf8.ValidString(message) {
+		return false
+	}
+
+	conn.Write([]byte{0x00})
+	conn.Write([]byte(message))
+	conn.Write([]byte{0xFF})
+	return true
+}
+
+func readMessage(conn net.Conn) (string, bool) {
+	rawData := new([]byte)
+
+	for {
+		b, ok := readByte(conn)
+		if !ok {
+			return "", false
+		}
+
+		if b == 0xFF {
+			break
+		}
+
+		*rawData = append(*rawData, b)
+	}
+
+	return string(*rawData), true
+}
+
+func readByte(conn net.Conn) (byte, bool) {
+	buf := make([]byte, 1)
+	_, err := conn.Read(buf)
+	if err != nil && err != io.EOF {
+		log.Printf("Error reading from socket: %s", err)
+		conn.Close()
+		return 0, false
+	}
+	return buf[0], true
+}
+
 func closeConnection(conn net.Conn) {
-	conn.Write([]byte{0xFF, 0x00})
+	conn.Write([]byte{0xFF})
+	conn.Write([]byte{0x00})
 	conn.Close()
 }

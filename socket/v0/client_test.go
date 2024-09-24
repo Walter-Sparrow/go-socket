@@ -40,14 +40,23 @@ func TestConnection(t *testing.T) {
 		t.Error("Wrong handshake response aknowledgement")
 	}
 
-	conn.Write([]byte{0xFF, 0x00})
-	buf = make([]byte, 2)
+	conn.Write([]byte{0xFF})
+	conn.Write([]byte{0x00})
+
+	buf = make([]byte, 1)
 	_, err = conn.Read(buf)
 	if err != nil {
 		t.Error("Could not read from socket")
 	}
+	if buf[0] != 0xFF {
+		t.Error("Failed closing connection")
+	}
 
-	if buf[0] != 0xFF || buf[1] != 0x00 {
+	_, err = conn.Read(buf)
+	if err != nil {
+		t.Error("Could not read from socket")
+	}
+	if buf[0] != 0x00 {
 		t.Error("Failed closing connection")
 	}
 
