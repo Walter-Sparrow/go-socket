@@ -20,6 +20,7 @@ func Demo() {
 
 		quit := make(chan bool)
 		defer func() {
+			time.Sleep(5 * time.Second)
 			client.Close()
 			quit <- true
 		}()
@@ -29,8 +30,6 @@ func Demo() {
 		if err := client.Send(message); err != nil {
 			log.Println(err)
 		}
-
-		time.Sleep(1 * time.Second)
 
 		go func() {
 			for {
