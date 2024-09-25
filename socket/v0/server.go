@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -64,12 +63,12 @@ func validateHeaders(headers http.Header) bool {
 }
 
 func computeChallenge(key1 string, key2 string, challenge []byte) ([16]byte, error) {
-	number1, err := getNumberFromKey(key1)
+	number1, err := numberFromKey(key1)
 	if err != nil {
 		return [16]byte{}, err
 	}
 
-	number2, err := getNumberFromKey(key2)
+	number2, err := numberFromKey(key2)
 	if err != nil {
 		return [16]byte{}, err
 	}
@@ -95,20 +94,19 @@ func computeChallenge(key1 string, key2 string, challenge []byte) ([16]byte, err
 	return hash, nil
 }
 
-func getNumberFromKey(key string) (uint32, error) {
-	result := ""
+func numberFromKey(key string) (uint32, error) {
+	var result uint32
 	for i := 0; i < len(key); i++ {
 		if key[i] >= '0' && key[i] <= '9' {
-			result += string(key[i])
+			result = result*10 + uint32(key[i]-'0')
 		}
 	}
 
-	ui64, err := strconv.ParseUint(result, 10, 32)
-	if err != nil {
-		return 0, err
+	if result == 0 {
+		return 0, fmt.Errorf("server: Key has no number")
 	}
 
-	return uint32(ui64), nil
+	return result, nil
 }
 
 func countSpaces(s string) uint8 {
