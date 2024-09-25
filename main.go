@@ -17,11 +17,12 @@ func main() {
 		})
 		if err != nil {
 			log.Println(err)
+			return
 		}
 		defer client.Close()
 
 		message := []byte("hello")
-		log.Printf("client: sending message: %s", message)
+		log.Printf("client: Sending message: %s", message)
 		if err := client.Send(message); err != nil {
 			log.Println(err)
 		}
@@ -43,7 +44,7 @@ func main() {
 				break
 			}
 
-			log.Printf("server: recv %s", message)
+			log.Printf("server: Recv %s", message)
 		}
 	})
 	http.ListenAndServe(":6969", mux)

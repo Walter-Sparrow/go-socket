@@ -49,8 +49,7 @@ func Upgrade(w http.ResponseWriter, r *http.Request) (*Connection, error) {
 		return nil, err
 	}
 
-	writeHandshakeResponse(buf, r.Header, challenge)
-	log.Print("server: Handshake complete")
+	writeHandshakeResponse(buf, r.Header, r.Host, challenge)
 
 	return NewConnection(conn), nil
 }
@@ -121,15 +120,15 @@ func countSpaces(s string) uint8 {
 	return count
 }
 
-func writeHandshakeResponse(buf *bufio.ReadWriter, rHeaders http.Header, challenge [16]byte) {
+func writeHandshakeResponse(buf *bufio.ReadWriter, rHeaders http.Header, host string, challenge [16]byte) {
 	buf.WriteString("HTTP/1.1 101 Switching Protocols\r\n")
-	writeHandshakeHeaders(buf, rHeaders)
+	writeHandshakeHeaders(buf, rHeaders, host)
 	buf.WriteString("\r\n")
 	buf.Write(challenge[:])
 	buf.Flush()
 }
 
-func writeHandshakeHeaders(buf *bufio.ReadWriter, rHeaders http.Header) {
+func writeHandshakeHeaders(buf *bufio.ReadWriter, rHeaders http.Header, host string) {
 	addHeader(buf, "Upgrade", "WebSocket")
 	addHeader(buf, "Connection", "Upgrade")
 
@@ -138,7 +137,6 @@ func writeHandshakeHeaders(buf *bufio.ReadWriter, rHeaders http.Header) {
 		addHeader(buf, "Sec-WebSocket-Protocol", subprotocol)
 	}
 
-	host := rHeaders.Get("Host")
 	addHeader(buf, "Sec-WebSocket-Location", host)
 
 	origin := rHeaders.Get("Origin")

@@ -3,7 +3,6 @@ package v0
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"unicode/utf8"
 )
@@ -41,16 +40,19 @@ func (c *Connection) writeTextMessage(message []byte) error {
 		return fmt.Errorf("conn: Message is not valid UTF-8")
 	}
 
-	c.conn.Write([]byte{0x00})
-	c.conn.Write(message)
-	c.conn.Write([]byte{0xFF})
+	var buf []byte
+	buf = append(buf, 0x00)
+	buf = append(buf, message...)
+	buf = append(buf, 0xFF)
+	if _, err := c.conn.Write(buf); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func (c *Connection) writeCloseMessage() error {
-	c.conn.Write([]byte{0xFF})
-	c.conn.Write([]byte{0x00})
+	c.conn.Write([]byte{0xFF, 0x00})
 	return nil
 }
 
@@ -94,7 +96,6 @@ func (c *Connection) readByte() (byte, error) {
 
 	_, err := c.conn.Read(buf)
 	if err != nil && err != io.EOF {
-		log.Printf("conn: Error reading from socket: %s", err)
 		c.Close()
 		return 0, err
 	}
