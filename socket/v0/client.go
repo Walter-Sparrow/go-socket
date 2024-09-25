@@ -17,7 +17,8 @@ import (
 )
 
 type Client struct {
-	conn net.Conn
+	conn    net.Conn
+	closing bool
 }
 
 func NewClient(address string, pattern string, headers http.Header) (*Client, error) {
@@ -303,9 +304,11 @@ func (c *Client) Read() (string, error) {
 		}
 
 		if frameType == 0xFF && length == 0 {
-			c.Close()
+			if !c.closing {
+				c.Close()
+			}
 			c.conn.Close()
-			log.Print("client: Connection closed")
+			return "", fmt.Errorf("client: Connection closed")
 		} else {
 			isError = true
 		}
@@ -345,6 +348,8 @@ func (c *Client) Close() error {
 	if err := writeByte(c.conn, 0x00); err != nil {
 		return err
 	}
+
+	c.closing = true
 
 	return nil
 }

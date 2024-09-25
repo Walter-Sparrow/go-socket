@@ -16,7 +16,8 @@ const (
 )
 
 type Connection struct {
-	conn net.Conn
+	conn    net.Conn
+	closing bool
 }
 
 func NewConnection(conn net.Conn) *Connection {
@@ -65,6 +66,8 @@ func (c *Connection) writeCloseMessage() error {
 		return fmt.Errorf("conn: Failed to write close code")
 	}
 
+	c.closing = true
+
 	return nil
 }
 
@@ -97,7 +100,9 @@ func (c *Connection) Read() ([]byte, error) {
 			return nil, fmt.Errorf("conn: Invalid close code")
 		}
 
-		c.writeCloseMessage()
+		if !c.closing {
+			c.writeCloseMessage()
+		}
 		c.Close()
 		return nil, fmt.Errorf("conn: Connection closed")
 	}

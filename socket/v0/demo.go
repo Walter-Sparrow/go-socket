@@ -40,7 +40,7 @@ func Demo() {
 					message, err := client.Read()
 					if err != nil {
 						log.Println(err)
-						break
+						return
 					}
 
 					log.Printf("client: Recv '%s'", message)
