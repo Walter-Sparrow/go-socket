@@ -9,7 +9,7 @@ import (
 func Demo() {
 	go func() {
 		time.Sleep(5 * time.Second)
-		client, err := NewClient(":6969", "/ws", http.Header{
+		client, err := NewClient("127.0.0.1:6969", "/ws", http.Header{
 			"Host":   []string{"localhost"},
 			"Origin": []string{"http://localhost"},
 		})

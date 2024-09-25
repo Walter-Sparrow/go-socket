@@ -28,14 +28,14 @@ func NewClient(address string, pattern string, headers http.Header) (*Client, er
 	}
 
 	log.Print("client: Preparing handshake")
-	if err = handshake(conn, pattern, headers); err != nil {
+	if err = clientHandshake(conn, address, pattern, headers); err != nil {
 		return nil, err
 	}
 
 	return &Client{conn: conn}, nil
 }
 
-func handshake(conn net.Conn, pattern string, headers http.Header) error {
+func clientHandshake(conn net.Conn, address string, pattern string, headers http.Header) error {
 	var buf []byte
 
 	buf = append(buf, fmt.Sprintf("GET %s HTTP/1.1\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nContent-Length: 8\r\n", pattern)...)
@@ -196,7 +196,11 @@ Fields:
 			return fmt.Errorf("client: Wrong Origin header in handshake response")
 		}
 
-		// TODO: Sec-WebSocket-Location
+		location := address + pattern
+		if name == "sec-websocket-location" && value != location {
+			conn.Close()
+			return fmt.Errorf("client: Wrong Sec-WebSocket-Location header in handshake response")
+		}
 	}
 
 	challenge := new(bytes.Buffer)
