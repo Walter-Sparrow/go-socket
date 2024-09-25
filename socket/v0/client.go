@@ -233,7 +233,7 @@ func websocketKey() (string, uint32) {
 		if rangeCoinFlip == 0 {
 			char = rand.IntN(15) + 33
 		} else {
-			char = rand.IntN(69) + 58
+			char = rand.IntN(69 /* nice */) + 58
 		}
 
 		key = key[:position] + string(char) + key[position:]
@@ -274,27 +274,77 @@ func (c *Client) Send(message []byte) error {
 	return nil
 }
 
-func (c *Client) Close() error {
-	if _, err := c.conn.Write([]byte{0xFF, 0x00}); err != nil {
-		c.conn.Close()
-		return err
+func (c *Client) Read() (string, error) {
+	frameType, err := readByte(c.conn)
+	if err != nil {
+		return "", fmt.Errorf("client: Failed to read message type")
 	}
 
-	// TODO: add read with close message handling
-	go func() {
+	var data string
+	isError := false
+	if frameType&0x80 == 0x80 {
+		length := 0
 		for {
 			b, err := readByte(c.conn)
 			if err != nil {
-				return
+				return "", fmt.Errorf("client: Failed to read length")
 			}
 
-			if b == 0xFF {
-				log.Println("client: Connection closed")
-				c.conn.Close()
-				return
+			bV := int(b & 0x7F)
+			length = length*128 + bV
+			if b&0x80 == 0x80 {
+				continue
 			}
+
+			if _, err := readBytes(c.conn, length); err != nil {
+				return "", fmt.Errorf("client: Failed to read message")
+			}
+			break
 		}
-	}()
+
+		if frameType == 0xFF && length == 0 {
+			c.Close()
+			c.conn.Close()
+			log.Print("client: Connection closed")
+		} else {
+			isError = true
+		}
+	} else if frameType&0x80 == 0x00 {
+		var rawData []byte
+		for b, err := readByte(c.conn); b != 0xFF; b, err = readByte(c.conn) {
+			if err != nil {
+				return "", fmt.Errorf("client: Failed to read message")
+			}
+
+			rawData = append(rawData, b)
+		}
+
+		if !utf8.Valid(rawData) {
+			isError = true
+		} else {
+			data = string(rawData)
+		}
+
+		if frameType != 0x00 {
+			isError = true
+		}
+	}
+
+	if isError {
+		return "", fmt.Errorf("client: Invalid message")
+	}
+
+	return data, nil
+}
+
+func (c *Client) Close() error {
+	if err := writeByte(c.conn, 0xFF); err != nil {
+		return err
+	}
+
+	if err := writeByte(c.conn, 0x00); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -318,7 +368,7 @@ func readByte(conn net.Conn) (byte, error) {
 func writeBytes(conn net.Conn, b []byte) error {
 	if _, err := conn.Write(b); err != nil {
 		conn.Close()
-		log.Printf("client: Failed to write bytes: %v", err)
+		log.Printf("client: Failed to write bytes (%x): %v", b, err)
 		return err
 	}
 	return nil

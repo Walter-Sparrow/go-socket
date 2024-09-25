@@ -19,6 +19,7 @@ func main() {
 			log.Println(err)
 			return
 		}
+
 		defer client.Close()
 
 		message := []byte("hello")
@@ -26,6 +27,18 @@ func main() {
 		if err := client.Send(message); err != nil {
 			log.Println(err)
 		}
+
+		go func() {
+			for {
+				message, err := client.Read()
+				if err != nil {
+					log.Println(err)
+					break
+				}
+
+				log.Printf("client: Recv %s", message)
+			}
+		}()
 	}()
 
 	mux := http.NewServeMux()
@@ -35,17 +48,25 @@ func main() {
 			log.Println(err)
 			return
 		}
-		defer conn.Close()
 
-		for {
-			message, err := conn.Read()
-			if err != nil {
-				log.Println(err)
-				break
+		message := []byte("hello from server")
+		log.Printf("server: Sending message: %s", message)
+		if err := conn.Write(v0.TextMessage, message); err != nil {
+			log.Println(err)
+		}
+
+		go func() {
+			for {
+				message, err := conn.Read()
+				if err != nil {
+					log.Println(err)
+					break
+				}
+
+				log.Printf("server: Recv %s", message)
 			}
 
-			log.Printf("server: Recv %s", message)
-		}
+		}()
 	})
 	http.ListenAndServe(":6969", mux)
 }
