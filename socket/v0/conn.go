@@ -3,6 +3,7 @@ package v0
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"unicode/utf8"
 )
@@ -22,7 +23,7 @@ func NewConnection(conn net.Conn) *Connection {
 	return &Connection{conn: conn}
 }
 
-// Close closes the underlying connection with a close frame
+// Close closes the underlying connection without a close frame
 func (c *Connection) Close() error {
 	return c.conn.Close()
 }
@@ -40,19 +41,30 @@ func (c *Connection) writeTextMessage(message []byte) error {
 		return fmt.Errorf("conn: Message is not valid UTF-8")
 	}
 
-	var buf []byte
-	buf = append(buf, 0x00)
-	buf = append(buf, message...)
-	buf = append(buf, 0xFF)
-	if _, err := c.conn.Write(buf); err != nil {
-		return err
+	if err := c.writeByte(0x00); err != nil {
+		return fmt.Errorf("conn: Failed to write message type")
+	}
+
+	if err := c.writeBytes(message); err != nil {
+		return fmt.Errorf("conn: Failed to write message")
+	}
+
+	if err := c.writeByte(0xFF); err != nil {
+		return fmt.Errorf("conn: Failed to write message terminator")
 	}
 
 	return nil
 }
 
 func (c *Connection) writeCloseMessage() error {
-	c.conn.Write([]byte{0xFF, 0x00})
+	if err := c.writeByte(0xFF); err != nil {
+		return fmt.Errorf("conn: Failed to write close message")
+	}
+
+	if err := c.writeByte(0x00); err != nil {
+		return fmt.Errorf("conn: Failed to write close code")
+	}
+
 	return nil
 }
 
@@ -91,18 +103,6 @@ func (c *Connection) Read() ([]byte, error) {
 	}
 }
 
-func (c *Connection) readByte() (byte, error) {
-	buf := make([]byte, 1)
-
-	_, err := c.conn.Read(buf)
-	if err != nil && err != io.EOF {
-		c.Close()
-		return 0, err
-	}
-
-	return buf[0], nil
-}
-
 func (c *Connection) readTextMessage() ([]byte, error) {
 	rawData := new([]byte)
 
@@ -120,4 +120,30 @@ func (c *Connection) readTextMessage() ([]byte, error) {
 	}
 
 	return *rawData, nil
+}
+
+func (c *Connection) readByte() (byte, error) {
+	buf := make([]byte, 1)
+
+	if _, err := c.conn.Read(buf); err != nil && err != io.EOF {
+		c.Close()
+		log.Printf("conn: Failed to read byte: %v", err)
+		return 0, err
+	}
+
+	return buf[0], nil
+}
+
+func (c *Connection) writeBytes(b []byte) error {
+	if _, err := c.conn.Write(b); err != nil {
+		c.Close()
+		log.Printf("conn: Failed to write bytes: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Connection) writeByte(b byte) error {
+	return c.writeBytes([]byte{b})
 }

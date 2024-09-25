@@ -57,22 +57,21 @@ func handshake(conn net.Conn, pattern string, headers http.Header) error {
 	key3 := challengeKey()
 	buf = append(buf, key3[:]...)
 
-	_, err := conn.Write(buf)
+	err := writeBytes(conn, buf)
 	if err != nil {
 		return err
 	}
 
 	var field []byte
-	var rb [1]byte
 	for {
-		if _, err := conn.Read(rb[:]); err != nil && err != io.EOF {
-			conn.Close()
+		b, err := readByte(conn)
+		if err != nil {
 			return fmt.Errorf("client: Can't read handshake response")
 		}
 
-		field = append(field, rb[:]...)
+		field = append(field, b)
 
-		if rb[0] == 0x0a {
+		if b == 0x0a {
 			break
 		}
 	}
@@ -98,12 +97,12 @@ Fields:
 		var value []byte
 
 		for {
-			if _, err := conn.Read(rb[:]); err != nil && err != io.EOF {
-				conn.Close()
+			b, err := readByte(conn)
+			if err != nil {
 				return fmt.Errorf("client: Error reading handshake headers")
 			}
 
-			if rb[0] == 0x0d {
+			if b == 0x0d {
 				if len(name) == 0 {
 					break Fields
 				} else {
@@ -112,56 +111,54 @@ Fields:
 				}
 			}
 
-			if rb[0] == 0x0a {
+			if b == 0x0a {
 				conn.Close()
 				return fmt.Errorf("client: Error reading handshake headers")
 			}
 
-			if rb[0] == 0x3a {
+			if b == 0x3a {
 				break
 			}
 
-			if rb[0] >= 0x41 && rb[0] <= 0x5a {
-				name = append(name, (rb[0] + 0x20))
+			if b >= 0x41 && b <= 0x5a {
+				name = append(name, (b + 0x20))
 			} else {
-				name = append(name, rb[0])
+				name = append(name, b)
 			}
 		}
 
 		count := 0
 		for {
-			if _, err := conn.Read(rb[:]); err != nil && err != io.EOF {
-				conn.Close()
+			b, err := readByte(conn)
+			if err != nil {
 				return fmt.Errorf("client: Error reading handshake headers")
 			}
 			count++
 
-			if rb[0] == 0x20 && count == 1 {
+			if b == 0x20 && count == 1 {
 				continue
 			}
 
-			if rb[0] == 0x0d {
+			if b == 0x0d {
 				break
 			}
 
-			if rb[0] == 0x0a {
+			if b == 0x0a {
 				conn.Close()
 				return fmt.Errorf("client: Error reading handshake headers")
 			} else {
-				value = append(value, rb[0])
+				value = append(value, b)
 			}
 		}
 
-		if _, err := conn.Read(rb[:]); (err != nil && err != io.EOF) || rb[0] != 0x0a {
-			conn.Close()
+		if b, err := readByte(conn); err != nil || b != 0x0a {
 			return fmt.Errorf("client: Error reading handshake headers")
 		}
 
 		fields[string(name)] = string(value)
 	}
 
-	if _, err := conn.Read(rb[:]); (err != nil && err != io.EOF) || rb[0] != 0x0a {
-		conn.Close()
+	if b, err := readByte(conn); err != nil || b != 0x0a {
 		return fmt.Errorf("client: Error reading handshake headers")
 	}
 
@@ -207,9 +204,8 @@ Fields:
 	binary.Write(challenge, binary.BigEndian, key3)
 	expected := md5.Sum(challenge.Bytes())
 
-	var reply [16]byte
-	if _, err := conn.Read(reply[:]); err != nil && err != io.EOF {
-		conn.Close()
+	reply, err := readBytes(conn, 16)
+	if err != nil {
 		return fmt.Errorf("client: Could not read challenge")
 	}
 
@@ -263,14 +259,16 @@ func (c *Client) Send(message []byte) error {
 		return fmt.Errorf("client: Message is not valid UTF-8")
 	}
 
-	var buf []byte
-	buf = append(buf, 0x00)
-	buf = append(buf, message...)
-	buf = append(buf, 0xFF)
+	if err := writeByte(c.conn, 0x00); err != nil {
+		return fmt.Errorf("client: Failed to write message type")
+	}
 
-	if _, err := c.conn.Write(buf); err != nil {
-		c.conn.Close()
-		return err
+	if err := writeBytes(c.conn, message); err != nil {
+		return fmt.Errorf("client: Failed to write message")
+	}
+
+	if err := writeByte(c.conn, 0xFF); err != nil {
+		return fmt.Errorf("client: Failed to write message terminator")
 	}
 
 	return nil
@@ -285,14 +283,12 @@ func (c *Client) Close() error {
 	// TODO: add read with close message handling
 	go func() {
 		for {
-			var buf [1]byte
-
-			if _, err := c.conn.Read(buf[:]); err != nil {
-				c.conn.Close()
+			b, err := readByte(c.conn)
+			if err != nil {
 				return
 			}
 
-			if buf[0] == 0xFF {
+			if b == 0xFF {
 				log.Println("client: Connection closed")
 				c.conn.Close()
 				return
@@ -301,4 +297,33 @@ func (c *Client) Close() error {
 	}()
 
 	return nil
+}
+
+func readBytes(conn net.Conn, n int) ([]byte, error) {
+	buf := make([]byte, n)
+	if _, err := conn.Read(buf); err != nil && err != io.EOF {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func readByte(conn net.Conn) (byte, error) {
+	if buf, err := readBytes(conn, 1); err != nil {
+		return 0, err
+	} else {
+		return buf[0], nil
+	}
+}
+
+func writeBytes(conn net.Conn, b []byte) error {
+	if _, err := conn.Write(b); err != nil {
+		conn.Close()
+		log.Printf("client: Failed to write bytes: %v", err)
+		return err
+	}
+	return nil
+}
+
+func writeByte(conn net.Conn, b byte) error {
+	return writeBytes(conn, []byte{b})
 }
