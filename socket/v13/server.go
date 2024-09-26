@@ -74,7 +74,7 @@ func serverHandshake(buf *bufio.ReadWriter, headers http.Header) {
 
 	subprotocol := headers.Get("Sec-WebSocket-Protocol")
 	if subprotocol != "" {
-		subprotocol, _, _ = strings.Cut(subprotocol, ";")
+		subprotocol, _, _ = strings.Cut(subprotocol, ",")
 	}
 
 	extensions := headers.Get("Sec-WebSocket-Extensions")
