@@ -5,6 +5,10 @@ tasks:
     cmds:
       - go run main.go v0
 
+  v13-demo:
+    cmds:
+      - go run main.go v13
+
   test:
     cmds:
       - go test -v --count=1 ./... 
