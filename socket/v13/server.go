@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func Upgrade(w http.ResponseWriter, r *http.Request) (net.Conn, error) {
+func Upgrade(w http.ResponseWriter, r *http.Request) (*Connection, error) {
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -30,7 +30,7 @@ func Upgrade(w http.ResponseWriter, r *http.Request) (net.Conn, error) {
 	}
 
 	serverHandshake(buf, r.Header)
-	return conn, nil
+	return NewConnection(conn), nil
 }
 
 func validateHeaders(conn net.Conn, buf *bufio.ReadWriter, headers http.Header, sHost string, cHost string) bool {
