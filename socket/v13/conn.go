@@ -19,8 +19,17 @@ func (c *Connection) Close() error {
 
 func (c *Connection) Write(message []byte) error {
 	frame := NewTextFrame(message).Bytes()
-	log.Printf("client: Sending frame: '%x'", frame)
+	log.Printf("server: Sending frame: '%s'", frame)
 	_, err := c.conn.Write(frame)
 
 	return err
+}
+
+func (c *Connection) Read() (*Frame, error) {
+	buf := make([]byte, 1024)
+	n, err := c.conn.Read(buf)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFrame(buf[:n])
 }
