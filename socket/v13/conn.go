@@ -1,17 +1,23 @@
 package v13
 
 import (
-	"io"
+	"bufio"
 	"log"
 	"net"
 )
 
+const (
+	defaultReadBufferSize = 4096
+)
+
 type Connection struct {
 	conn net.Conn
+	br   *bufio.Reader
 }
 
 func NewConnection(conn net.Conn) *Connection {
-	return &Connection{conn: conn}
+	br := bufio.NewReaderSize(conn, defaultReadBufferSize)
+	return &Connection{conn: conn, br: br}
 }
 
 func (c *Connection) Close() error {
@@ -27,10 +33,10 @@ func (c *Connection) Write(message []byte) error {
 }
 
 func (c *Connection) Read() (*Frame, error) {
-	buf := make([]byte, 1024)
-	n, err := c.conn.Read(buf)
-	if err != nil && err != io.EOF {
+	frame, err := ReadFrame(c.br)
+	if err != nil {
 		return nil, err
 	}
-	return ParseFrame(buf[:n])
+	frame.MaskPayload()
+	return frame, nil
 }

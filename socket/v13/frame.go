@@ -1,9 +1,10 @@
 package v13
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"io"
 )
 
 const (
@@ -37,45 +38,82 @@ func NewTextFrame(payload []byte) *Frame {
 	return NewFrame(true, OpText, false, [4]byte{}, payload)
 }
 
-func ParseFrame(buf []byte) (*Frame, error) {
+func ReadFrame(br *bufio.Reader) (*Frame, error) {
 	frame := &Frame{}
-	controlByte := buf[0]
+	controlByte, err := readByte(br)
+	if err != nil {
+		return nil, err
+	}
 	frame.Fin = controlByte>>7 == 1
 	frame.Opcode = controlByte & 0x0f
 
-	mask := buf[1]>>7 == 1
+	lengthByte, err := readByte(br)
+	if err != nil {
+		return nil, err
+	}
+	mask := lengthByte>>7 == 1
 	frame.Mask = mask
-	payloadLengthByte := buf[1] & 0x7f
-	if payloadLengthByte <= 125 {
-		length := int(payloadLengthByte)
-		if mask {
-			frame.MaskKey = [4]byte{buf[2], buf[3], buf[4], buf[5]}
+	payloadLengthByte := lengthByte & 0x7f
+	length := int(payloadLengthByte)
+	switch payloadLengthByte {
+	case 126:
+		lengthValueBuf, err := readBytes(br, 2)
+		if err != nil {
+			return nil, err
 		}
-
-		frame.Payload = buf[6 : 6+length]
-	} else if payloadLengthByte == 126 {
-		length := int(binary.BigEndian.Uint16(buf[2:4]))
-		if mask {
-			frame.MaskKey = [4]byte{buf[4], buf[5], buf[6], buf[7]}
+		length = int(binary.BigEndian.Uint16(lengthValueBuf))
+	case 127:
+		lengthValueBuf, err := readBytes(br, 8)
+		if err != nil {
+			return nil, err
 		}
-
-		frame.Payload = buf[8 : 8+length]
-	} else if payloadLengthByte == 127 {
-		length := int(binary.BigEndian.Uint64(buf[2:10]))
-		if mask {
-			frame.MaskKey = [4]byte{buf[10], buf[11], buf[12], buf[13]}
-		}
-
-		frame.Payload = buf[14 : 14+length]
-	} else {
-		return nil, fmt.Errorf("server: Invalid payload length byte")
+		length = int(binary.BigEndian.Uint64(lengthValueBuf))
 	}
 
-	unmask(frame.Payload, frame.MaskKey)
+	if mask {
+		maskBuf, err := readBytes(br, 4)
+		if err != nil {
+			return nil, err
+		}
+		frame.MaskKey = [4]byte(maskBuf)
+	}
+
+	payloadBuf, err := readBytes(br, length)
+	if err != nil {
+		return nil, err
+	}
+	frame.Payload = payloadBuf
+
 	return frame, nil
 }
 
-func unmask(payload []byte, maskKey [4]byte) {
+func readBytes(br *bufio.Reader, n int) ([]byte, error) {
+	buf := make([]byte, n)
+	if _, err := br.Read(buf); err != nil && err != io.EOF {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func readByte(br *bufio.Reader) (byte, error) {
+	b, err := readBytes(br, 1)
+	if err != nil {
+		return 0, err
+	}
+	return b[0], nil
+}
+
+func (f Frame) MaskPayload() {
+	if !f.Mask {
+		return
+	}
+
+	if len(f.MaskKey) != 4 {
+		return
+	}
+
+	maskKey := f.MaskKey
+	payload := f.Payload
 	for i := 0; i < len(payload); i++ {
 		payload[i] ^= maskKey[i%4]
 	}
