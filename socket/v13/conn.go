@@ -32,11 +32,11 @@ func (c *Connection) Write(message []byte) error {
 	return err
 }
 
-func (c *Connection) Read() (*Frame, error) {
+func (c *Connection) Read() (messageType byte, message []byte, err error) {
 	frame, err := ReadFrame(c.br)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	frame.MaskPayload()
-	return frame, nil
+	return frame.Opcode, frame.Payload, nil
 }

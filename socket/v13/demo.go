@@ -16,12 +16,12 @@ func Demo() {
 
 		conn.Write([]byte("hello"))
 		for {
-			frame, err := conn.Read()
+			_, message, err := conn.Read()
 			if err != nil {
 				log.Println(err)
 				return
 			}
-			log.Printf("server: Received frame: '%s'", frame.Payload)
+			log.Printf("server: Received message: '%s'", message)
 		}
 	})
 	http.ListenAndServe("127.0.0.1:6969", mux)
