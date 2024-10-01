@@ -1,6 +1,7 @@
 package v13
 
 import (
+	"io"
 	"log"
 	"net"
 )
@@ -28,7 +29,7 @@ func (c *Connection) Write(message []byte) error {
 func (c *Connection) Read() (*Frame, error) {
 	buf := make([]byte, 1024)
 	n, err := c.conn.Read(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return ParseFrame(buf[:n])
