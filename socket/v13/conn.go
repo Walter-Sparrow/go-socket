@@ -24,11 +24,12 @@ func (c *Connection) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Connection) Write(message []byte) error {
-	frame := NewTextFrame(message).Bytes()
-	log.Printf("server: Sending frame: '%s'", frame)
-	_, err := c.conn.Write(frame)
-
+func (c *Connection) Write(messageType byte, message []byte) error {
+	frame := NewFrame(true, messageType, false, [4]byte{}, message)
+	_, err := c.conn.Write(frame.Bytes())
+	if err != nil {
+		log.Println(err)
+	}
 	return err
 }
 

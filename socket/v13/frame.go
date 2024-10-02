@@ -16,6 +16,23 @@ const (
 	OpPong         = 10
 )
 
+const (
+	CloseNormalClosure       = 1000
+	CloseGoingAway           = 1001
+	CloseProtocolError       = 1002
+	CloseUnsupportedData     = 1003
+	CloseNoStatusReceived    = 1005
+	CloseAbnormalClosure     = 1006
+	CloseInvalidFramePayload = 1007
+	ClosePolicyViolation     = 1008
+	CloseMessageTooBig       = 1009
+	CloseMandatoryExtension  = 1010
+	CloseInternalError       = 1011
+	CloseServiceRestart      = 1012
+	CloseTryAgainLater       = 1013
+	CloseTLSHandshake        = 1015
+)
+
 type Frame struct {
 	Fin     bool
 	Opcode  byte
@@ -36,6 +53,13 @@ func NewFrame(fin bool, opcode byte, mask bool, maskKey [4]byte, payload []byte)
 
 func NewTextFrame(payload []byte) *Frame {
 	return NewFrame(true, OpText, false, [4]byte{}, payload)
+}
+
+func NewCloseFrame(code uint16, reason string) *Frame {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, code)
+	buf.Write([]byte(reason))
+	return NewFrame(true, OpClose, false, [4]byte{}, buf.Bytes())
 }
 
 func ReadFrame(br *bufio.Reader) (*Frame, error) {

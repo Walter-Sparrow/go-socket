@@ -14,7 +14,11 @@ func Demo() {
 			return
 		}
 
-		conn.Write([]byte("hello"))
+		if err := conn.Write(OpText, []byte("Hello, world!")); err != nil {
+			log.Println(err)
+			return
+		}
+
 		for {
 			_, message, err := conn.Read()
 			if err != nil {
